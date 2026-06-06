@@ -1,0 +1,13 @@
+kaggle
+pandas
+numpy
+matplotlib
+seaborn
+plotly
+scikit-learn
+xgboost
+imbalanced-learn
+streamlit
+openpyxl
+python-dotenv
+joblib
