@@ -201,7 +201,7 @@ if "avg_assessment_score" in fdf.columns:
     fdf = fdf[fdf["avg_assessment_score"].between(score_range[0],score_range[1])]
 
 # ─── HEADER ────────────────────────────────────────────────────
-st.markdown("# 🎓 Open University Learning Analytics")
+st.markdown("# AI-Powered Student Dropout Prediction System")
 st.caption(f"Showing **{len(fdf):,}** of **{len(master):,}** students")
 
 # ─── KPIs ──────────────────────────────────────────────────────
