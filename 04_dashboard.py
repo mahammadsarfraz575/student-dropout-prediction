@@ -201,7 +201,7 @@ if "avg_assessment_score" in fdf.columns:
     fdf = fdf[fdf["avg_assessment_score"].between(score_range[0],score_range[1])]
 
 # ─── HEADER ────────────────────────────────────────────────────
-st.markdown("# AI-Powered Student Dropout Prediction System")
+st.markdown("# 🎓 Open University Learning Analytics")
 st.caption(f"Showing **{len(fdf):,}** of **{len(master):,}** students")
 
 # ─── KPIs ──────────────────────────────────────────────────────
@@ -586,5 +586,4 @@ with t5:
             st.error(f"Prediction error: {e}")
 
 st.markdown("---")
-st.caption("📊 Student Dropout Risk Prediction & Early Warning Analytics System
-👨‍💻 Developed by Mahammad Sarfraz")
+st.caption("🎓 OULAD Analytics | Python + Streamlit | Open University Dataset")
