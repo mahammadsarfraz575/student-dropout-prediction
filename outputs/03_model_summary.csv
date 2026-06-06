@@ -1,0 +1,5 @@
+,Accuracy,ROC-AUC,CV Accuracy
+Logistic Regression,90.64%,0.9701,90.67%
+Random Forest,93.24%,0.9833,93.32%
+Gradient Boosting,94.60%,0.9863,94.39%
+XGBoost,94.71%,0.9866,94.55%
