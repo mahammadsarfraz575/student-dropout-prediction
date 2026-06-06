@@ -12,10 +12,6 @@
 
 ## 🚀 Live Demo
 
-- **📊 Streamlit Dashboard:** [your-app.streamlit.app](https://your-app.streamlit.app) *(add after deployment)*
-- **📈 Power BI Report:** [View Report →](https://app.powerbi.com/view?r=YOUR_CODE) *(add after publishing)*
-- **💻 GitHub Repo:** [github.com/yourname/oulad-project](https://github.com/yourname/oulad-project)
-
 ---
 
 ## 📊 Key Results
@@ -243,7 +239,7 @@ This project is designed to be **explained in interviews**:
 ## 📧 Contact
 
 **Mahammad Sarfraz**  
-📧 mahammadsarfraz575@gmail,com  
+📧 mahammadsarfraz575@gmail.com  
 ---
 
 ## 📄 License
