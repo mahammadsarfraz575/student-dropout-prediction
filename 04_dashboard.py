@@ -586,5 +586,4 @@ with t5:
             st.error(f"Prediction error: {e}")
 
 st.markdown("---")
-st.caption("📊 Student Dropout Risk Prediction & Early Warning Analytics System
-👨‍💻 Developed by Mahammad Sarfraz")
+st.caption("🎓 OULAD Analytics | Python + Streamlit | Open University Dataset")
