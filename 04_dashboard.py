@@ -65,8 +65,9 @@ def load_vle():
 @st.cache_resource
 def train_all_models(master):
     """
-    Train all 4 models fresh — no .pkl files needed.
-    Returns dict: {model_name: (pipeline, accuracy, auc)}
+    Train all 4 models fresh.
+    IMPORTANT: saves category_maps so prediction uses
+    EXACTLY the same encoding as training — fixes AT RISK bug.
     """
     from sklearn.linear_model    import LogisticRegression
     from sklearn.ensemble        import RandomForestClassifier, GradientBoostingClassifier
@@ -82,7 +83,6 @@ def train_all_models(master):
     except ImportError:
         HAS_XGB = False
 
-    # ── Feature prep ─────────────────────────────────────────────
     cat_cols = ["gender","region","highest_education",
                 "imd_band","age_band","disability",
                 "code_module","code_presentation"]
@@ -96,13 +96,20 @@ def train_all_models(master):
     ]
 
     ml_df = master.copy()
+
+    # ── Save EXACT category → code mapping used in training ──────
+    # This is the KEY FIX — prediction must use same map!
+    category_maps = {}
     for col in cat_cols:
         if col in ml_df.columns:
-            ml_df[col+"_enc"] = pd.Categorical(ml_df[col]).codes
+            cat = pd.Categorical(ml_df[col])
+            # map: "Male" → 0, "Female" → 1  (exact same as training)
+            category_maps[col] = {v: i for i, v in enumerate(cat.categories)}
+            ml_df[col+"_enc"] = cat.codes
 
-    enc_features  = [c+"_enc" for c in cat_cols if c in master.columns]
-    feature_cols  = enc_features + [f for f in num_features if f in ml_df.columns]
-    feature_cols  = [f for f in feature_cols if f in ml_df.columns]
+    enc_features = [c+"_enc" for c in cat_cols if c in master.columns]
+    feature_cols = enc_features + [f for f in num_features if f in ml_df.columns]
+    feature_cols = [f for f in feature_cols if f in ml_df.columns]
 
     if "target" not in ml_df.columns:
         ml_df["target"] = ml_df["final_result"].map(PASS_LABELS)
@@ -110,22 +117,27 @@ def train_all_models(master):
     X = ml_df[feature_cols].fillna(0)
     y = ml_df["target"].fillna(0).astype(int)
 
+    # Show class balance for debug
+    pass_count = int(y.sum())
+    fail_count = int((y==0).sum())
+
     X_train,X_test,y_train,y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    # ── Define all 4 models ──────────────────────────────────────
     definitions = {
         "🔵 Logistic Regression": Pipeline([
             ("imputer", SimpleImputer(strategy="mean")),
             ("scaler",  StandardScaler()),
-            ("clf",     LogisticRegression(max_iter=1000, random_state=42))
+            ("clf",     LogisticRegression(max_iter=1000, random_state=42,
+                                            class_weight="balanced"))
         ]),
         "🌲 Random Forest": Pipeline([
             ("imputer", SimpleImputer(strategy="mean")),
             ("clf",     RandomForestClassifier(
                             n_estimators=100, max_depth=12,
-                            random_state=42, n_jobs=-1))
+                            random_state=42, n_jobs=-1,
+                            class_weight="balanced"))
         ]),
         "📈 Gradient Boosting": Pipeline([
             ("imputer", SimpleImputer(strategy="mean")),
@@ -135,15 +147,16 @@ def train_all_models(master):
         ]),
     }
     if HAS_XGB:
+        ratio = fail_count / max(pass_count, 1)
         definitions["⚡ XGBoost"] = Pipeline([
             ("imputer", SimpleImputer(strategy="mean")),
             ("clf",     XGBClassifier(
                             n_estimators=100, max_depth=6,
                             learning_rate=0.05, random_state=42,
+                            scale_pos_weight=ratio,
                             eval_metric="logloss", verbosity=0))
         ])
 
-    # ── Train each model ─────────────────────────────────────────
     trained = {}
     for name, pipe in definitions.items():
         pipe.fit(X_train, y_train)
@@ -151,11 +164,16 @@ def train_all_models(master):
         y_prob = pipe.predict_proba(X_test)[:,1]
         acc    = round(accuracy_score(y_test, y_pred)*100, 1)
         auc    = round(roc_auc_score(y_test, y_prob), 4)
-        trained[name] = {"pipe": pipe, "acc": acc, "auc": auc,
-                          "y_pred": y_pred, "y_prob": y_prob,
-                          "y_test": y_test}
+        trained[name] = {
+            "pipe":   pipe,
+            "acc":    acc,
+            "auc":    auc,
+            "y_pred": y_pred,
+            "y_prob": y_prob,
+            "y_test": y_test,
+        }
 
-    return trained, feature_cols
+    return trained, feature_cols, category_maps
 
 
 # ─── LOAD DATA ─────────────────────────────────────────────────
@@ -405,7 +423,7 @@ with t5:
     st.markdown('<p class="sec">🤖 Predict with Any Model</p>', unsafe_allow_html=True)
 
     with st.spinner("⏳ Training all 4 models — please wait..."):
-        trained_models, feature_cols = train_all_models(master)
+        trained_models, feature_cols, category_maps = train_all_models(master)
 
     # ── Model comparison table ────────────────────────────────
     st.markdown("### 📊 Model Comparison")
@@ -507,83 +525,212 @@ with t5:
 
     if st.button("🔮 Predict Now", type="primary", use_container_width=True):
         try:
-            pipe = sel["pipe"]
-            row  = {c: 0 for c in feature_cols}
+            # ── Build input row using SAME encoding as training ─
+            row = {c: 0 for c in feature_cols}
 
-            cat_enc = {
-                "gender_enc":            sorted(master["gender"].dropna().unique()).index(gender),
-                "region_enc":            sorted(master["region"].dropna().unique()).index(region),
-                "highest_education_enc": list(master["highest_education"].dropna().unique()).index(education),
-                "imd_band_enc":          list(master["imd_band"].dropna().unique()).index(imd_band),
-                "age_band_enc":          sorted(master["age_band"].dropna().unique()).index(age_band),
-                "disability_enc":        0 if disability=="N" else 1,
+            # Use category_maps from training — EXACT same encoding!
+            cat_inputs = {
+                "gender":              gender,
+                "region":              region,
+                "highest_education":   education,
+                "imd_band":            imd_band,
+                "age_band":            age_band,
+                "disability":          disability,
             }
-            for k,v2 in cat_enc.items():
-                if k in row: row[k]=v2
+            for col, val in cat_inputs.items():
+                enc_key = col + "_enc"
+                if enc_key in row and col in category_maps:
+                    row[enc_key] = category_maps[col].get(val, 0)
 
+            # Also add code_module / code_presentation if in features
+            if "code_module_enc" in row and "code_module" in category_maps:
+                row["code_module_enc"] = 0
+            if "code_presentation_enc" in row and "code_presentation" in category_maps:
+                row["code_presentation_enc"] = 0
+
+            # Numeric features — use realistic values
             row.update({
                 "studied_credits":       credits,
                 "num_of_prev_attempts":  prev_att,
                 "clicks_day30":          clicks30,
                 "avg_assessment_score":  avg_sc,
                 "active_days":           act_d,
-                "total_clicks":          clicks30 * 3,
+                "total_clicks":          max(clicks30 * 4, clicks30 + 100),
+                "tma_avg_score":         avg_sc,
+                "exam_avg_score":        avg_sc * 0.9,
+                "late_submissions":      0,
+                "num_modules_registered":1,
+                "click_std":             clicks30 * 0.3,
+                "unique_activity_types": 5,
+                "last_active_day":       act_d,
             })
-
             X_in = pd.DataFrame([row])[feature_cols]
-            pred = pipe.predict(X_in)[0]
-            prob = pipe.predict_proba(X_in)[0]
 
-            # ── Result banner ──────────────────────────────────
+            # ── Run all 4 models ───────────────────────────────
+            all_results = {}
+            for mname, mv in trained_models.items():
+                mpred = mv["pipe"].predict(X_in)[0]
+                mprob = mv["pipe"].predict_proba(X_in)[0]
+                all_results[mname] = {
+                    "pred":      mpred,
+                    "pass_pct":  round(mprob[1]*100, 1),
+                    "risk_pct":  round(mprob[0]*100, 1),
+                }
+
             st.markdown("---")
-            st.markdown(f"**Predicted by: {selected_model}**")
 
-            if pred==1:
-                st.success(f"✅ LIKELY TO PASS — Confidence: {prob[1]*100:.1f}%")
+            # ══════════════════════════════════════════════════
+            # BIG NUMBER CARDS — one per model
+            # ══════════════════════════════════════════════════
+            st.markdown("### 🎯 Passing Probability — All 4 Models")
+
+            model_colors = {
+                "🔵 Logistic Regression": "#4f8ef7",
+                "🌲 Random Forest":       "#2ecc71",
+                "📈 Gradient Boosting":   "#ffb347",
+                "⚡ XGBoost":             "#a78bfa",
+            }
+
+            cols = st.columns(len(all_results))
+            for i, (mname, res) in enumerate(all_results.items()):
+                clr   = model_colors.get(mname, "#4f8ef7")
+                emoji = "✅" if res["pred"]==1 else "⚠️"
+                label = "PASS"  if res["pred"]==1 else "AT RISK"
+                bg    = "#0d2b0d" if res["pred"]==1 else "#2b0d0d"
+                cols[i].markdown(f"""
+<div style="background:{bg};border-radius:14px;padding:20px 10px;
+            text-align:center;border:2px solid {clr};margin:4px">
+  <p style="color:{clr};font-size:12px;margin:0;font-weight:600">
+    {mname}</p>
+  <p style="color:#fff;font-size:42px;font-weight:800;margin:8px 0 0">
+    {res['pass_pct']}%</p>
+  <p style="color:#aaa;font-size:11px;margin:0">Pass Probability</p>
+  <p style="color:{clr};font-size:16px;font-weight:700;margin:8px 0 0">
+    {emoji} {label}</p>
+  <p style="color:#888;font-size:11px;margin:4px 0 0">
+    Risk: {res['risk_pct']}%</p>
+</div>""", unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # ── Highlighted selected model result ──────────────
+            sel_res = all_results[selected_model]
+            st.markdown(f"#### Selected Model: **{selected_model}**")
+            if sel_res["pred"]==1:
+                st.success(
+                    f"✅ **LIKELY TO PASS**  |  "
+                    f"Pass Probability: **{sel_res['pass_pct']}%**  |  "
+                    f"Risk: **{sel_res['risk_pct']}%**"
+                )
             else:
-                st.error(f"⚠️ AT RISK (Fail/Withdraw) — Risk: {prob[0]*100:.1f}%")
+                st.error(
+                    f"⚠️ **AT RISK**  |  "
+                    f"Pass Probability: **{sel_res['pass_pct']}%**  |  "
+                    f"Risk: **{sel_res['risk_pct']}%**"
+                )
 
-            # ── Gauge ──────────────────────────────────────────
-            gauge=go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=prob[1]*100,
-                title={"text":f"Pass Probability — {selected_model}"},
+            # ── Progress bars — very clear visual ─────────────
+            st.markdown("#### 📊 Pass Probability — Visual Bars")
+            for mname, res in all_results.items():
+                clr = model_colors.get(mname,"#4f8ef7")
+                is_selected = "⭐ " if mname==selected_model else "   "
+                st.markdown(
+                    f"**{is_selected}{mname}** — "
+                    f"<span style='color:#2ecc71;font-size:18px;font-weight:700'>"
+                    f"{res['pass_pct']}% pass</span> | "
+                    f"<span style='color:#e74c3c;font-size:18px;font-weight:700'>"
+                    f"{res['risk_pct']}% risk</span>",
+                    unsafe_allow_html=True
+                )
+                st.progress(int(res["pass_pct"]))
+
+            # ── Gauge for selected model ────────────────────────
+            st.markdown(f"#### 🎯 Gauge — {selected_model}")
+            gauge = go.Figure(go.Indicator(
+                mode    = "gauge+number+delta",
+                value   = sel_res["pass_pct"],
+                delta   = {"reference": 50,
+                           "increasing":{"color":"#2ecc71"},
+                           "decreasing":{"color":"#e74c3c"}},
+                number  = {"suffix":"%","font":{"size":48}},
+                title   = {"text": f"Pass Probability<br><span style='font-size:14px'>"
+                                   f"{selected_model}</span>"},
                 gauge={
-                    "axis":{"range":[0,100]},
-                    "bar":{"color":"#2ecc71" if pred==1 else "#e74c3c"},
+                    "axis":{"range":[0,100],"tickwidth":1},
+                    "bar":{"color":"#2ecc71" if sel_res["pred"]==1 else "#e74c3c",
+                           "thickness":0.3},
+                    "bgcolor":"rgba(0,0,0,0)",
+                    "borderwidth":0,
                     "steps":[
                         {"range":[0,40], "color":"#2d1a1a"},
                         {"range":[40,60],"color":"#2d2a1a"},
-                        {"range":[60,100],"color":"#1a2d1a"}
+                        {"range":[60,100],"color":"#1a2d1a"},
                     ],
-                    "threshold":{"line":{"color":"white","width":3},"value":50}
+                    "threshold":{
+                        "line":{"color":"white","width":4},
+                        "thickness":0.8,
+                        "value":50
+                    }
                 }
             ))
             gauge.update_layout(
-                template=TPL, paper_bgcolor="rgba(0,0,0,0)", height=280
+                template=TPL,
+                paper_bgcolor="rgba(0,0,0,0)",
+                height=320,
+                font={"color":"white"}
             )
             st.plotly_chart(gauge, use_container_width=True)
 
-            # ── Compare all 4 on same input ───────────────────
-            st.markdown("### 🔄 All 4 Models on This Student")
-            compare_rows = []
-            for mname, mv in trained_models.items():
-                mp    = mv["pipe"]
-                mpred = mp.predict(X_in)[0]
-                mprob = mp.predict_proba(X_in)[0]
-                compare_rows.append({
-                    "Model":      mname,
-                    "Prediction": "✅ Pass" if mpred==1 else "⚠️ At Risk",
-                    "Pass Prob":  f"{mprob[1]*100:.1f}%",
-                    "Risk Score": f"{mprob[0]*100:.1f}%",
-                })
-            st.dataframe(
-                pd.DataFrame(compare_rows).set_index("Model"),
-                use_container_width=True
+            # ── Bar chart comparison ────────────────────────────
+            st.markdown("#### 📈 Side-by-Side Bar Chart")
+            bar_df = pd.DataFrame([
+                {"Model": n.split(" ",1)[-1],
+                 "Pass %": r["pass_pct"],
+                 "Risk %": r["risk_pct"]}
+                for n,r in all_results.items()
+            ])
+            fig_bar = go.Figure()
+            fig_bar.add_trace(go.Bar(
+                name="Pass Probability %",
+                x=bar_df["Model"],
+                y=bar_df["Pass %"],
+                marker_color=["#2ecc71" if v>=50 else "#e74c3c"
+                              for v in bar_df["Pass %"]],
+                text=[f"{v}%" for v in bar_df["Pass %"]],
+                textposition="outside",
+                textfont=dict(size=16, color="white")
+            ))
+            fig_bar.add_hline(y=50, line_dash="dash",
+                              line_color="white", opacity=0.5,
+                              annotation_text="50% threshold")
+            fig_bar.update_layout(
+                title="Pass Probability by Model (%)",
+                template=TPL,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                yaxis=dict(range=[0,105]),
+                showlegend=False,
+                font=dict(size=13)
             )
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+            # ── Clean summary table ────────────────────────────
+            st.markdown("#### 📋 Full Results Table")
+            tbl = pd.DataFrame([
+                {
+                    "Model":           mname,
+                    "Verdict":         "✅ Pass" if r["pred"]==1 else "⚠️ At Risk",
+                    "Pass Probability":f"{r['pass_pct']}%",
+                    "Risk Score":      f"{r['risk_pct']}%",
+                    "Selected":        "⭐ Yes" if mname==selected_model else "",
+                }
+                for mname,r in all_results.items()
+            ]).set_index("Model")
+            st.dataframe(tbl, use_container_width=True)
 
         except Exception as e:
             st.error(f"Prediction error: {e}")
+            st.exception(e)
 
 st.markdown("---")
 st.caption("🎓 OULAD Analytics | Python + Streamlit | Open University Dataset")
