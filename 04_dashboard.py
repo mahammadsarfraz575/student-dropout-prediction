@@ -117,10 +117,6 @@ def train_all_models(master):
     X = ml_df[feature_cols].fillna(0)
     y = ml_df["target"].fillna(0).astype(int)
 
-    # Show class balance for debug
-    pass_count = int(y.sum())
-    fail_count = int((y==0).sum())
-
     X_train,X_test,y_train,y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
@@ -129,32 +125,37 @@ def train_all_models(master):
         "🔵 Logistic Regression": Pipeline([
             ("imputer", SimpleImputer(strategy="mean")),
             ("scaler",  StandardScaler()),
-            ("clf",     LogisticRegression(max_iter=1000, random_state=42,
-                                            class_weight="balanced"))
+            ("clf",     LogisticRegression(
+                            max_iter=1000,
+                            random_state=42))
         ]),
         "🌲 Random Forest": Pipeline([
             ("imputer", SimpleImputer(strategy="mean")),
             ("clf",     RandomForestClassifier(
-                            n_estimators=100, max_depth=12,
-                            random_state=42, n_jobs=-1,
-                            class_weight="balanced"))
+                            n_estimators=100,
+                            max_depth=12,
+                            random_state=42,
+                            n_jobs=-1))
         ]),
         "📈 Gradient Boosting": Pipeline([
             ("imputer", SimpleImputer(strategy="mean")),
             ("clf",     GradientBoostingClassifier(
-                            n_estimators=100, max_depth=5,
-                            learning_rate=0.05, random_state=42))
+                            n_estimators=100,
+                            max_depth=5,
+                            learning_rate=0.05,
+                            random_state=42))
         ]),
     }
     if HAS_XGB:
-        ratio = fail_count / max(pass_count, 1)
         definitions["⚡ XGBoost"] = Pipeline([
             ("imputer", SimpleImputer(strategy="mean")),
             ("clf",     XGBClassifier(
-                            n_estimators=100, max_depth=6,
-                            learning_rate=0.05, random_state=42,
-                            scale_pos_weight=ratio,
-                            eval_metric="logloss", verbosity=0))
+                            n_estimators=100,
+                            max_depth=6,
+                            learning_rate=0.05,
+                            random_state=42,
+                            eval_metric="logloss",
+                            verbosity=0))
         ])
 
     trained = {}
