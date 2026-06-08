@@ -70,18 +70,14 @@ def train_all_models(master):
     EXACTLY the same encoding as training — fixes AT RISK bug.
     """
     from sklearn.linear_model    import LogisticRegression
-    from sklearn.ensemble        import RandomForestClassifier, GradientBoostingClassifier
+    from sklearn.ensemble        import (RandomForestClassifier,
+                                         GradientBoostingClassifier,
+                                         HistGradientBoostingClassifier)
     from sklearn.model_selection import train_test_split
     from sklearn.impute          import SimpleImputer
     from sklearn.preprocessing   import StandardScaler
     from sklearn.pipeline        import Pipeline
     from sklearn.metrics         import accuracy_score, roc_auc_score
-
-    try:
-        from xgboost import XGBClassifier
-        HAS_XGB = True
-    except ImportError:
-        HAS_XGB = False
 
     cat_cols = ["gender","region","highest_education",
                 "imd_band","age_band","disability",
@@ -132,7 +128,7 @@ def train_all_models(master):
         "🌲 Random Forest": Pipeline([
             ("imputer", SimpleImputer(strategy="mean")),
             ("clf",     RandomForestClassifier(
-                            n_estimators=100,
+                            n_estimators=150,
                             max_depth=12,
                             random_state=42,
                             n_jobs=-1))
@@ -145,18 +141,17 @@ def train_all_models(master):
                             learning_rate=0.05,
                             random_state=42))
         ]),
-    }
-    if HAS_XGB:
-        definitions["⚡ XGBoost"] = Pipeline([
+        # HistGradientBoosting = sklearn's own fast boosting
+        # handles NaN natively, no imputer needed, same accuracy as XGBoost
+        "⚡ Hist Gradient Boost": Pipeline([
             ("imputer", SimpleImputer(strategy="mean")),
-            ("clf",     XGBClassifier(
-                            n_estimators=100,
+            ("clf",     HistGradientBoostingClassifier(
+                            max_iter=100,
                             max_depth=6,
                             learning_rate=0.05,
-                            random_state=42,
-                            eval_metric="logloss",
-                            verbosity=0))
-        ])
+                            random_state=42))
+        ]),
+    }
 
     trained = {}
     for name, pipe in definitions.items():
@@ -440,10 +435,10 @@ with t5:
     st.markdown("### 🧠 Model Descriptions")
     mc = st.columns(len(trained_models))
     model_info = {
-        "🔵 Logistic Regression": ("Linear separator","Fast & interpretable.\nGood baseline for comparison.","#4f8ef7"),
-        "🌲 Random Forest":       ("200 trees vote","Parallel trees. Robust\nagainst overfitting.","#2ecc71"),
-        "📈 Gradient Boosting":   ("Sequential correction","Each tree fixes previous\nerrors. High accuracy.","#ffb347"),
-        "⚡ XGBoost":             ("Optimized boosting","Best for tabular data.\nIndustry standard.","#a78bfa"),
+        "🔵 Logistic Regression": ("Linear separator",  "Fast & interpretable. Good baseline.",        "#4f8ef7"),
+        "🌲 Random Forest":        ("150 trees vote",    "Parallel trees. Robust, feature importance.", "#2ecc71"),
+        "📈 Gradient Boosting":    ("Sequential trees",  "Each tree corrects previous errors.",          "#ffb347"),
+        "⚡ Hist Gradient Boost":  ("Fast boosting",     "sklearn's best booster. XGBoost-level speed & accuracy.", "#a78bfa"),
     }
     for i,(name,v) in enumerate(trained_models.items()):
         algo, desc, clr = model_info.get(name,("ML Model","","#4f8ef7"))
@@ -587,9 +582,9 @@ with t5:
 
             model_colors = {
                 "🔵 Logistic Regression": "#4f8ef7",
-                "🌲 Random Forest":       "#2ecc71",
-                "📈 Gradient Boosting":   "#ffb347",
-                "⚡ XGBoost":             "#a78bfa",
+                "🌲 Random Forest":        "#2ecc71",
+                "📈 Gradient Boosting":    "#ffb347",
+                "⚡ Hist Gradient Boost":  "#a78bfa",
             }
 
             cols = st.columns(len(all_results))
