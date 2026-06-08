@@ -729,4 +729,4 @@ with t5:
             st.exception(e)
 
 st.markdown("---")
-st.caption("🎓 OULAD Analytics | Python + Streamlit | Open University Dataset")
+st.caption(" 🧑‍💻Devloped By Mahammad Sarfraz")
