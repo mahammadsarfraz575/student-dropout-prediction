@@ -613,48 +613,81 @@ elif cur == "Predict":
   <div class="pbv" style="color:{bc}">{res['pass_pct']}%</div>
 </div>""", unsafe_allow_html=True)
 
-        st.markdown("<br>",unsafe_allow_html=True)
-        sr = results[sel]; gc = "#2ecc71" if sr["pred"]==1 else "#e74c3c"
-        gauge = go.Figure(go.Indicator(
-            mode="gauge+number+delta", value=sr["pass_pct"],
-            delta={"reference":50,"increasing":{"color":"#2ecc71"},
-                   "decreasing":{"color":"#e74c3c"}},
-            number={"suffix":"%","font":{"size":56,"color":gc}},
-            title={"text":f"<b>{sel}</b><br>"
-                          f"<span style='font-size:12px;color:#3a4d6b'>Pass Probability</span>"},
-            gauge={"axis":{"range":[0,100]},"bar":{"color":gc,"thickness":0.28},
-                   "bgcolor":"rgba(0,0,0,0)","borderwidth":0,
-                   "steps":[{"range":[0,40],"color":"#100505"},
-                             {"range":[40,60],"color":"#101005"},
-                             {"range":[60,100],"color":"#051005"}],
-                   "threshold":{"line":{"color":"white","width":3},
-                                "thickness":0.75,"value":50}}))
-        gauge.update_layout(template=TPL,paper_bgcolor="rgba(0,0,0,0)",
-                             height=300,font={"color":"white"})
-        st.plotly_chart(gauge,use_container_width=True)
+        # ── Gauge (fixed — no delta font color issue) ─────────
+        st.markdown("<br>", unsafe_allow_html=True)
+        sr  = results[sel]
+        gc  = "#2ecc71" if sr["pred"]==1 else "#e74c3c"
+        ga, gb = st.columns([1,1])
+        with ga:
+            try:
+                gauge = go.Figure()
+                gauge.add_trace(go.Indicator(
+                    mode  = "gauge+number",
+                    value = sr["pass_pct"],
+                    number= {"suffix":"%","valueformat":".1f",
+                             "font":{"size":52}},
+                    title = {"text": f"{sel.split(' ',1)[-1]}<br>"
+                                     "<span style='font-size:12px;"
+                                     "color:#3a4d6b'>Pass Probability</span>",
+                             "font":{"size":14}},
+                    gauge = {
+                        "axis" :{"range":[0,100],"tickwidth":1,
+                                 "tickcolor":"#3a4d6b"},
+                        "bar"  :{"color":gc,"thickness":0.25},
+                        "bgcolor":"rgba(0,0,0,0)","borderwidth":0,
+                        "steps":[
+                            {"range":[0,50], "color":"#120808"},
+                            {"range":[50,100],"color":"#081208"},
+                        ],
+                        "threshold":{
+                            "line":{"color":"white","width":3},
+                            "thickness":0.75,"value":50
+                        }
+                    }
+                ))
+                gauge.update_layout(
+                    height=280,
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    font_color="#c8d6f0",
+                    margin=dict(t=60,b=20,l=30,r=30)
+                )
+                st.plotly_chart(gauge, use_container_width=True)
+            except Exception:
+                st.metric(f"{sel} — Pass Probability", f"{sr['pass_pct']}%")
 
-        # bar chart
-        bd = pd.DataFrame([{"Model":n.split(" ",1)[-1],
-                              "Pass %":r["pass_pct"]} for n,r in results.items()])
-        fb = go.Figure(go.Bar(
-            x=bd["Model"],y=bd["Pass %"],
-            marker_color=["#2ecc71" if v>=50 else "#e74c3c" for v in bd["Pass %"]],
-            text=[f"{v}%" for v in bd["Pass %"]],
-            textposition="outside",textfont=dict(size=15,color="white")))
-        fb.add_hline(y=50,line_dash="dash",line_color="white",opacity=0.3,
-                     annotation_text="50% threshold")
-        fb.update_layout(template=TPL,title="Pass % — Side by Side",
-                          paper_bgcolor="rgba(0,0,0,0)",
-                          plot_bgcolor="rgba(0,0,0,0)",
-                          yaxis=dict(range=[0,115]),showlegend=False)
-        st.plotly_chart(bf(fb),use_container_width=True)
+        with gb:
+            # Bar chart all 4
+            bd  = pd.DataFrame([{
+                "Model": n.split(" ",1)[-1],
+                "Pass %": r["pass_pct"]
+            } for n,r in results.items()])
+            fb = go.Figure(go.Bar(
+                x=bd["Model"], y=bd["Pass %"],
+                marker_color=["#2ecc71" if v>=50 else "#e74c3c"
+                               for v in bd["Pass %"]],
+                text=[f"{v}%" for v in bd["Pass %"]],
+                textposition="outside",
+                textfont=dict(size=14, color="white")
+            ))
+            fb.add_hline(y=50, line_dash="dash", line_color="white",
+                         opacity=0.3, annotation_text="50% line")
+            fb.update_layout(
+                template=TPL, title="All Models — Pass %",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                yaxis=dict(range=[0,115]), showlegend=False,
+                height=280, margin=dict(t=40,b=10,l=10,r=10)
+            )
+            st.plotly_chart(fb, use_container_width=True)
 
-        st.markdown("### 📋 Summary")
+        st.markdown("### 📋 Summary Table")
         st.dataframe(pd.DataFrame([{
-            "Model":mn,"Verdict":"✅ Pass" if r["pred"]==1 else "⚠️ At Risk",
-            "Pass %":f"{r['pass_pct']}%","Risk %":f"{r['risk_pct']}%",
-            "Highlighted":"⭐" if mn==sel else ""}
-            for mn,r in results.items()]).set_index("Model"),
+            "Model":   mn,
+            "Verdict": "✅ Pass" if r["pred"]==1 else "⚠️ At Risk",
+            "Pass %":  f"{r['pass_pct']}%",
+            "Risk %":  f"{r['risk_pct']}%",
+            "⭐":      "Yes" if mn==sel else "",
+        } for mn,r in results.items()]).set_index("Model"),
             use_container_width=True)
 
 # ═════════════════════════════════════════════════════════════
@@ -662,53 +695,89 @@ elif cur == "Predict":
 # ═════════════════════════════════════════════════════════════
 elif cur == "Compare":
     ph("Model Comparison","ROC curves, accuracy and algorithm explanations","⚖️")
+
     with st.spinner("Training models..."):
         trained, FEATS = train_models(len(master))
     if trained is None:
-        st.error("Training failed."); st.stop()
+        st.error("Training failed. Run pipeline first."); st.stop()
 
-    from sklearn.metrics import roc_curve
-    st.markdown("### 📊 Performance")
-    comp=pd.DataFrame({n:{"Accuracy":f"{v['acc']}%","ROC-AUC":f"{v['auc']}"}
-                        for n,v in trained.items()}).T
-    st.dataframe(comp,use_container_width=True)
+    # ── Performance table ─────────────────────────────────────
+    st.markdown("### 📊 Performance Summary")
+    comp = pd.DataFrame({
+        n: {"Accuracy": f"{v['acc']}%", "ROC-AUC": f"{v['auc']}"}
+        for n,v in trained.items()
+    }).T
+    st.dataframe(comp, use_container_width=True)
 
-    st.markdown("### 📈 ROC Curves")
-    fig_roc=go.Figure()
+    # ── ROC Curves ────────────────────────────────────────────
+    st.markdown("### 📈 ROC Curves — All 4 Models")
+    try:
+        from sklearn.metrics import roc_curve
+        fig_roc = go.Figure()
+        roc_clrs = list(MCOL.values())
+        for i,(n,v) in enumerate(trained.items()):
+            fpr, tpr, _ = roc_curve(
+                v["y_test"].tolist(),
+                v["y_prob"].tolist()
+            )
+            fig_roc.add_trace(go.Scatter(
+                x=list(fpr), y=list(tpr),
+                name=f"{n.split(' ',1)[-1]} · AUC={v['auc']}",
+                line=dict(color=roc_clrs[i % len(roc_clrs)], width=2.5)
+            ))
+        fig_roc.add_trace(go.Scatter(
+            x=[0,1], y=[0,1], name="Random Baseline",
+            line=dict(color="#2d3d58", dash="dash")
+        ))
+        fig_roc.update_layout(
+            template=TPL,
+            xaxis_title="False Positive Rate",
+            yaxis_title="True Positive Rate",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font_color="#c8d6f0",
+            legend=dict(bgcolor="rgba(0,0,0,0)"),
+            height=420
+        )
+        st.plotly_chart(fig_roc, use_container_width=True)
+    except Exception as e:
+        st.warning(f"ROC chart error: {e}")
+
+    # ── Model info cards ──────────────────────────────────────
+    st.markdown("### 🧠 How Each Model Works")
+    info = {
+        "🔵 Logistic Regression": ("#4f8ef7","Linear separator",
+            "Draws a line between Pass and Fail. Uses sigmoid to output probability 0–1. Fastest, fully interpretable."),
+        "🌲 Random Forest":        ("#2ecc71","200 trees vote",
+            "200 independent trees on random subsets. Majority vote = prediction. Robust, gives feature importance."),
+        "📈 Gradient Boosting":    ("#ffb347","Sequential correction",
+            "Each tree corrects the last. High accuracy. Controlled by learning_rate=0.08."),
+        "⚡ Hist Gradient Boost":  ("#a78bfa","Fast histogram boosting",
+            "sklearn's own fast booster. Handles NaN natively. XGBoost-level accuracy, no compatibility issues."),
+    }
+    mc = st.columns(4)
     for i,(n,v) in enumerate(trained.items()):
-        fpr,tpr,_=roc_curve(v["y_test"],v["y_prob"])
-        fig_roc.add_trace(go.Scatter(x=fpr,y=tpr,
-            name=f"{n} · AUC={v['auc']}",
-            line=dict(color=list(MCOL.values())[i],width=2.5)))
-    fig_roc.add_trace(go.Scatter(x=[0,1],y=[0,1],name="Random",
-        line=dict(color="#384766",dash="dash")))
-    fig_roc.update_layout(template=TPL,xaxis_title="False Positive Rate",
-        yaxis_title="True Positive Rate",paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)")
-    st.plotly_chart(bf(fig_roc),use_container_width=True)
-
-    st.markdown("### 🧠 Algorithm Explanations")
-    info={"🔵 Logistic Regression":("#4f8ef7","Linear separator",
-           "Draws a linear boundary between Pass and Fail. Uses sigmoid function to output probability 0-1. Fastest model, fully interpretable coefficients."),
-          "🌲 Random Forest":("#2ecc71","200 trees vote",
-           "Trains 200 independent trees on random data subsets. Majority vote decides. Robust to noise, gives feature importance rankings."),
-          "📈 Gradient Boosting":("#ffb347","Sequential correction",
-           "Builds trees one after another. Each tree corrects the errors of the previous. High accuracy. Controlled by learning_rate=0.08."),
-          "⚡ Hist Gradient Boost":("#a78bfa","Fast histogram boosting",
-           "sklearn's own fast booster. Uses data histograms for splits. Handles NaN natively. XGBoost-level accuracy without compatibility issues.")}
-    mc=st.columns(4)
-    for i,(n,v) in enumerate(trained.items()):
-        clr,algo,desc=info.get(n,("#4f8ef7","",""))
+        clr, algo, desc = info.get(n, ("#4f8ef7","",""))
         mc[i].markdown(f"""
 <div class="mc" style="border-top:3px solid {clr}">
   <h4 style="color:{clr}">{n}</h4>
-  <p class="ma" style="color:{clr}">{algo}</p>
-  <p class="md">{desc}</p>
-  <div style="display:flex;gap:16px;margin-top:12px">
-    <div><p style="color:#2d3d58;font-size:9px;margin:0">ACCURACY</p>
-         <p class="ms" style="color:{clr}">{v['acc']}%</p></div>
-    <div><p style="color:#2d3d58;font-size:9px;margin:0">AUC</p>
-         <p class="ms" style="color:{clr}">{v['auc']}</p></div>
+  <p class="ma" style="color:{clr};font-size:10px;font-weight:600;
+     letter-spacing:1px;text-transform:uppercase;margin:0 0 6px">{algo}</p>
+  <p class="md" style="color:#3a4d6b;font-size:11px;
+     line-height:1.6;margin:0 0 12px">{desc}</p>
+  <div style="display:flex;gap:16px">
+    <div>
+      <p style="color:#2d3d58;font-size:9px;
+         font-weight:700;letter-spacing:1px;margin:0">ACCURACY</p>
+      <p style="font-size:22px;font-weight:800;
+         color:{clr};margin:4px 0 0">{v['acc']}%</p>
+    </div>
+    <div>
+      <p style="color:#2d3d58;font-size:9px;
+         font-weight:700;letter-spacing:1px;margin:0">ROC-AUC</p>
+      <p style="font-size:22px;font-weight:800;
+         color:{clr};margin:4px 0 0">{v['auc']}</p>
+    </div>
   </div>
 </div>""", unsafe_allow_html=True)
 
