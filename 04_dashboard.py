@@ -532,163 +532,173 @@ elif cur == "Predict":
     ph("Student Risk Predictor",
        "Enter student details — all 4 models predict instantly","🤖")
 
-    with st.spinner("Training models..."):
+    # attractive button + input card CSS
+    st.markdown("""
+    <style>
+    div[data-testid="stButton"]>button[kind="primary"]{
+      background:linear-gradient(135deg,#1a56db,#4f8ef7)!important;
+      color:#fff!important;font-size:18px!important;font-weight:700!important;
+      padding:18px 0!important;border-radius:14px!important;border:none!important;
+      letter-spacing:.5px!important;
+      box-shadow:0 4px 28px rgba(79,142,247,.45)!important;
+      transition:all .2s!important}
+    div[data-testid="stButton"]>button[kind="primary"]:hover{
+      background:linear-gradient(135deg,#1648c4,#3a7ae0)!important;
+      box-shadow:0 8px 36px rgba(79,142,247,.6)!important;
+      transform:translateY(-2px)!important}
+    .icard{background:#0c1525;border-radius:14px;padding:18px 20px;
+      border:1px solid #16213a;margin-bottom:2px}
+    .icard-title{color:#4f8ef7;font-size:11px;font-weight:700;
+      letter-spacing:1.5px;text-transform:uppercase;margin:0 0 12px;
+      padding-bottom:8px;border-bottom:1px solid #16213a}
+    </style>""", unsafe_allow_html=True)
+
+    with st.spinner("⏳ Loading models..."):
         trained, FEATS = train_models(len(master))
     if trained is None:
-        st.error("Training failed. Run pipeline first."); st.stop()
+        st.error("Training failed."); st.stop()
 
-    sel = st.selectbox("🧠 Highlight model:",
-                        list(trained.keys()), index=2,
-                        label_visibility="collapsed")
+    sel = st.radio("Highlight:", list(trained.keys()),
+                   index=2, horizontal=True,
+                   label_visibility="collapsed")
 
     st.markdown("---")
-    st.markdown("#### 📋 Student Profile")
     c1,c2,c3 = st.columns(3)
     with c1:
-        st.markdown("**📊 Assessment**")
-        avg_sc  = st.slider("Avg Assessment Score", 0,100,65)
-        tma_sc  = st.slider("Coursework Score",     0,100,65)
-        exam_sc = st.slider("Exam Score",           0,100,60)
+        st.markdown("""<div class="icard">
+        <p class="icard-title">📊 Assessment Scores</p></div>""",
+        unsafe_allow_html=True)
+        avg_sc  = st.slider("Average Score",    0,100,65)
+        tma_sc  = st.slider("Coursework (TMA)", 0,100,65)
+        exam_sc = st.slider("Exam Score",       0,100,60)
     with c2:
-        st.markdown("**📱 Engagement**")
-        clicks30= st.slider("Clicks by Day 30",  0,3000,600,50)
-        act_d   = st.slider("Active Days",        0,250,90)
-        tot_clk = st.slider("Total VLE Clicks",   0,20000,3000,100)
+        st.markdown("""<div class="icard">
+        <p class="icard-title">📱 Online Engagement</p></div>""",
+        unsafe_allow_html=True)
+        clicks30 = st.slider("Clicks by Day 30", 0,3000,600,50)
+        act_d    = st.slider("Active Days",       0,250,90)
+        tot_clk  = st.slider("Total VLE Clicks",  0,20000,3000,100)
     with c3:
-        st.markdown("**📚 Background**")
-        credits = st.select_slider("Credits",
+        st.markdown("""<div class="icard">
+        <p class="icard-title">📚 Background</p></div>""",
+        unsafe_allow_html=True)
+        credits  = st.select_slider("Credits",
                      [30,60,90,120,150,180,240,300],value=60)
-        prev_att= st.slider("Previous Attempts",  0,5,0)
-        late_sub= st.slider("Late Submissions",   0,10,0)
+        prev_att = st.slider("Previous Attempts",0,5,0)
+        late_sub = st.slider("Late Submissions", 0,10,0)
 
-    if st.button("🔮  Predict — All 4 Models",
-                  type="primary", use_container_width=True):
+    st.markdown("<br>", unsafe_allow_html=True)
+    predict_btn = st.button(
+        "🔮  Run Prediction — All 4 Models",
+        type="primary", use_container_width=True)
 
+    if predict_btn:
         inp = {"avg_assessment_score":avg_sc,"clicks_day30":clicks30,
                "active_days":act_d,"total_clicks":tot_clk,
                "studied_credits":credits,"num_of_prev_attempts":prev_att,
                "tma_avg_score":tma_sc,"exam_avg_score":exam_sc,
                "late_submissions":late_sub,"click_std":clicks30*0.3}
-        row = {f: inp.get(f,0) for f in FEATS}
+        row  = {f: inp.get(f,0) for f in FEATS}
         X_in = pd.DataFrame([row])[FEATS]
 
         results = {}
         for mn,mv in trained.items():
-            pred = mv["pipe"].predict(X_in)[0]
-            prob = mv["pipe"].predict_proba(X_in)[0]
-            results[mn] = {"pred":int(pred),
-                            "pass_pct":round(float(prob[1])*100,1),
-                            "risk_pct":round(float(prob[0])*100,1)}
+            try:
+                pred = mv["pipe"].predict(X_in)[0]
+                prob = mv["pipe"].predict_proba(X_in)[0]
+                results[mn] = {"pred":int(pred),
+                                "pass_pct":round(float(prob[1])*100,1),
+                                "risk_pct":round(float(prob[0])*100,1)}
+            except Exception:
+                results[mn] = {"pred":0,"pass_pct":0.0,"risk_pct":100.0}
 
+        # ── Result cards ──────────────────────────────────────
         st.markdown("---")
-        st.markdown("### 🎯 All 4 Model Predictions")
+        st.markdown("### 🎯 All 4 Model Results")
         cols = st.columns(4)
         for i,(mn,res) in enumerate(results.items()):
             mc   = MCOL.get(mn,"#4f8ef7")
             bc   = "#2ecc71" if res["pred"]==1 else "#e74c3c"
-            bg   = "#061606" if res["pred"]==1 else "#160606"
+            bg   = "linear-gradient(145deg,#061606,#0b1e0b)" if res["pred"]==1                    else "linear-gradient(145deg,#160606,#1e0b0b)"
             icon = "✅" if res["pred"]==1 else "⚠️"
-            lbl  = "PASS"    if res["pred"]==1 else "AT RISK"
-            star = " ⭐"      if mn==sel        else ""
-            brd  = f"2px solid {mc}" if mn==sel else f"1px solid {bc}55"
+            lbl  = "PASS" if res["pred"]==1 else "AT RISK"
+            brd  = f"2px solid {mc}" if mn==sel else f"1px solid {bc}44"
+            star = " ⭐" if mn==sel else ""
             cols[i].markdown(f"""
-<div class="rc" style="background:{bg};border:{brd}">
+<div style="background:{bg};border:{brd};border-radius:16px;
+     padding:24px 12px;text-align:center;margin:3px;
+     transition:transform .2s">
   <p style="color:{mc};font-size:10px;font-weight:700;
-     letter-spacing:1.5px;text-transform:uppercase;margin:0">{mn.split(' ',1)[-1]}{star}</p>
-  <p class="rp" style="color:{bc}">{res['pass_pct']}%</p>
-  <p style="color:#3a4d6b;font-size:10px;margin:2px 0 8px">Pass Probability</p>
-  <p class="rl" style="color:{bc}">{icon} {lbl}</p>
-  <p class="rs">Risk: {res['risk_pct']}%</p>
+     letter-spacing:1.5px;text-transform:uppercase;margin:0">
+     {mn.split(" ",1)[-1]}{star}</p>
+  <p style="color:{bc};font-size:54px;font-weight:900;
+     margin:8px 0 0;line-height:1">{res["pass_pct"]}%</p>
+  <p style="color:#3a4d6b;font-size:10px;margin:2px 0 8px">
+     Pass Probability</p>
+  <p style="color:{bc};font-size:13px;font-weight:700;
+     letter-spacing:2px;text-transform:uppercase;margin:0">
+     {icon} {lbl}</p>
+  <p style="color:#2d3d58;font-size:11px;margin:6px 0 0">
+     Risk Score: {res["risk_pct"]}%</p>
 </div>""", unsafe_allow_html=True)
 
-        st.markdown("<br>",unsafe_allow_html=True)
+        # ── Progress bars ─────────────────────────────────────
+        st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### 📊 Probability Bars")
+        bar_html = ('<div style="background:#0c1525;border-radius:14px;'
+                    'padding:20px 24px;border:1px solid #16213a">')
         for mn,res in results.items():
             bc   = "#2ecc71" if res["pred"]==1 else "#e74c3c"
             star = "⭐ " if mn==sel else "　 "
-            st.markdown(f"""
-<div class="pbr">
-  <div class="pbn">{star}{mn}</div>
-  <div class="pbb"><div class="pbf" style="width:{res['pass_pct']}%;background:{bc}"></div></div>
-  <div class="pbv" style="color:{bc}">{res['pass_pct']}%</div>
-</div>""", unsafe_allow_html=True)
+            pct  = res["pass_pct"]
+            bar_html += f"""
+<div style="display:grid;grid-template-columns:185px 1fr 58px;
+            align-items:center;gap:12px;padding:8px 0;
+            border-bottom:1px solid #0f1a28">
+  <div style="font-size:12px;color:#6b7a99;font-weight:600">
+    {star}{mn}</div>
+  <div style="height:12px;background:#0f1a28;border-radius:12px;overflow:hidden">
+    <div style="height:100%;width:{pct}%;background:{bc};
+         border-radius:12px"></div></div>
+  <div style="font-size:15px;font-weight:800;text-align:right;
+              color:{bc}">{pct}%</div>
+</div>"""
+        bar_html += "</div>"
+        st.markdown(bar_html, unsafe_allow_html=True)
 
-        # ── Gauge (fixed — no delta font color issue) ─────────
+        # ── Bar chart + table side by side ────────────────────
         st.markdown("<br>", unsafe_allow_html=True)
-        sr  = results[sel]
-        gc  = "#2ecc71" if sr["pred"]==1 else "#e74c3c"
-        ga, gb = st.columns([1,1])
-        with ga:
-            try:
-                gauge = go.Figure()
-                gauge.add_trace(go.Indicator(
-                    mode  = "gauge+number",
-                    value = sr["pass_pct"],
-                    number= {"suffix":"%","valueformat":".1f",
-                             "font":{"size":52}},
-                    title = {"text": f"{sel.split(' ',1)[-1]}<br>"
-                                     "<span style='font-size:12px;"
-                                     "color:#3a4d6b'>Pass Probability</span>",
-                             "font":{"size":14}},
-                    gauge = {
-                        "axis" :{"range":[0,100],"tickwidth":1,
-                                 "tickcolor":"#3a4d6b"},
-                        "bar"  :{"color":gc,"thickness":0.25},
-                        "bgcolor":"rgba(0,0,0,0)","borderwidth":0,
-                        "steps":[
-                            {"range":[0,50], "color":"#120808"},
-                            {"range":[50,100],"color":"#081208"},
-                        ],
-                        "threshold":{
-                            "line":{"color":"white","width":3},
-                            "thickness":0.75,"value":50
-                        }
-                    }
-                ))
-                gauge.update_layout(
-                    height=280,
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    font_color="#c8d6f0",
-                    margin=dict(t=60,b=20,l=30,r=30)
-                )
-                st.plotly_chart(gauge, use_container_width=True)
-            except Exception:
-                st.metric(f"{sel} — Pass Probability", f"{sr['pass_pct']}%")
-
-        with gb:
-            # Bar chart all 4
-            bd  = pd.DataFrame([{
-                "Model": n.split(" ",1)[-1],
-                "Pass %": r["pass_pct"]
-            } for n,r in results.items()])
+        ca,cb = st.columns(2)
+        with ca:
+            st.markdown("#### 📈 Bar Chart")
+            bd = pd.DataFrame([{"Model":n.split(" ",1)[-1],
+                                  "Pass %":r["pass_pct"]}
+                                for n,r in results.items()])
             fb = go.Figure(go.Bar(
-                x=bd["Model"], y=bd["Pass %"],
+                x=bd["Model"],y=bd["Pass %"],width=0.5,
                 marker_color=["#2ecc71" if v>=50 else "#e74c3c"
                                for v in bd["Pass %"]],
                 text=[f"{v}%" for v in bd["Pass %"]],
                 textposition="outside",
-                textfont=dict(size=14, color="white")
-            ))
-            fb.add_hline(y=50, line_dash="dash", line_color="white",
-                         opacity=0.3, annotation_text="50% line")
-            fb.update_layout(
-                template=TPL, title="All Models — Pass %",
+                textfont=dict(size=14,color="white")))
+            fb.add_hline(y=50,line_dash="dash",line_color="white",
+                         opacity=0.25,annotation_text="50%",
+                         annotation_font_color="white")
+            fb.update_layout(template=TPL,
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                yaxis=dict(range=[0,115]), showlegend=False,
-                height=280, margin=dict(t=40,b=10,l=10,r=10)
-            )
-            st.plotly_chart(fb, use_container_width=True)
-
-        st.markdown("### 📋 Summary Table")
-        st.dataframe(pd.DataFrame([{
-            "Model":   mn,
-            "Verdict": "✅ Pass" if r["pred"]==1 else "⚠️ At Risk",
-            "Pass %":  f"{r['pass_pct']}%",
-            "Risk %":  f"{r['risk_pct']}%",
-            "⭐":      "Yes" if mn==sel else "",
-        } for mn,r in results.items()]).set_index("Model"),
-            use_container_width=True)
+                yaxis=dict(range=[0,118],gridcolor="#0f1a28"),
+                showlegend=False,height=280,
+                margin=dict(t=30,b=10,l=10,r=10))
+            st.plotly_chart(fb,use_container_width=True)
+        with cb:
+            st.markdown("#### 📋 Summary")
+            tbl = pd.DataFrame([{
+                "Model":mn,"Verdict":"✅ Pass" if r["pred"]==1 else "⚠️ At Risk",
+                "Pass %":f"{r['pass_pct']}%","Risk %":f"{r['risk_pct']}%",
+                "⭐":"Yes" if mn==sel else ""}
+                for mn,r in results.items()]).set_index("Model")
+            st.dataframe(tbl,use_container_width=True,height=220)
 
 # ═════════════════════════════════════════════════════════════
 #  COMPARE
