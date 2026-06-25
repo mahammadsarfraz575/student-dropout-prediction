@@ -103,6 +103,18 @@ html,body,[data-testid="stAppViewContainer"]{background:#070b14!important}
   text-transform:uppercase;margin:0 0 8px}
 .mc .md{color:#3a4d6b;font-size:11px;line-height:1.6;margin:0 0 12px}
 .mc .ms{font-size:22px;font-weight:800}
+
+    /* Predict button — main content area only */
+    [data-testid="stMain"] .stButton>button[kind="primary"]{
+      background:linear-gradient(135deg,#1a56db,#4f8ef7)!important;
+      color:#fff!important;font-size:18px!important;font-weight:700!important;
+      padding:16px 0!important;border-radius:14px!important;border:none!important;
+      box-shadow:0 4px 28px rgba(79,142,247,.45)!important;
+      letter-spacing:.5px!important;transition:all .2s!important}
+    [data-testid="stMain"] .stButton>button[kind="primary"]:hover{
+      box-shadow:0 8px 36px rgba(79,142,247,.6)!important;
+      transform:translateY(-2px)!important}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -200,39 +212,69 @@ MCOL = {"🔵 Logistic Regression":"#4f8ef7","🌲 Random Forest":"#2ecc71",
 cur = st.session_state.page
 
 with st.sidebar:
-    st.markdown("""<div class="logo">
-    <h2>🎓 OULAD Analytics</h2>
-    <p>Learning Intelligence Platform</p>
-    </div>""", unsafe_allow_html=True)
+    # Logo
+    st.markdown("""
+<div style="padding:20px 16px 14px;border-bottom:1px solid #16213a;margin-bottom:4px">
+  <p style="color:#f0f4ff;font-size:17px;font-weight:800;margin:0">🎓 OULAD</p>
+  <p style="color:#4f8ef7;font-size:10px;letter-spacing:2px;
+     text-transform:uppercase;margin:3px 0 0">Analytics Platform</p>
+</div>""", unsafe_allow_html=True)
 
-    # each button immediately switches page
-    pages = {
-        "MAIN":      [("🏠","Home"),("📊","Overview")],
-        "ANALYSIS":  [("👥","Demographics"),("📈","Engagement"),("📝","Assessments")],
-        "PREDICT":   [("🤖","Predict"),("⚖️","Compare")],
-        "DATA":      [("🔍","Explore Data")],
-    }
+    # nav helper
+    def nav_btn(icon, label, page_key, indent=False):
+        is_cur = (cur == page_key)
+        pad    = "padding-left:28px" if indent else "padding-left:14px"
+        bg     = "background:#0f1e3d" if is_cur else "background:transparent"
+        clr    = "color:#4f8ef7" if is_cur else "color:#6b7a99"
+        brd    = "border-left:3px solid #4f8ef7" if is_cur else "border-left:3px solid transparent"
+        dot    = "●  " if is_cur else "○  " if indent else ""
+        st.markdown(f"""
+<div style="{bg};{brd};border-radius:0 8px 8px 0;{pad};
+     padding-top:9px;padding-bottom:9px;margin:1px 0;cursor:pointer">
+  <span style="{clr};font-size:13px;font-weight:{'700' if is_cur else '500'}">
+    {dot}{icon} {label}</span>
+</div>""", unsafe_allow_html=True)
+        clicked = st.button(f"{icon} {label}", key=f"nb_{page_key}",
+                            use_container_width=True,
+                            label_visibility="collapsed")
+        if clicked:
+            st.session_state.page = page_key
+            st.rerun()
 
-    for grp, items in pages.items():
-        st.markdown(f'<div class="grp">{grp}</div>', unsafe_allow_html=True)
-        for icon, name in items:
-            # highlight active
-            is_active = (cur == name)
-            label = f"{'▶  ' if is_active else '    '}{icon}  {name}"
-            btn_style = ("color:#4f8ef7!important;background:#0f1e3d!important;"
-                         "border-left:3px solid #4f8ef7!important;"
-                         "padding-left:15px!important" if is_active else "")
-            if st.button(label, key=f"nav_{name}", use_container_width=True):
-                st.session_state.page = name
-                st.rerun()
+    # ── MENU ──────────────────────────────────────────────────
+    st.markdown("""<p style="padding:14px 16px 4px;color:#2d3d58;font-size:9px;
+    font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:0">MAIN</p>""",
+    unsafe_allow_html=True)
+    nav_btn("🏠", "Home",     "Home")
+    nav_btn("📊", "Overview", "Overview")
 
-    st.markdown("---")
-    with st.expander("🎛️ Filters"):
+    st.markdown("""<p style="padding:14px 16px 4px;color:#2d3d58;font-size:9px;
+    font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:0">ANALYSIS</p>""",
+    unsafe_allow_html=True)
+    nav_btn("👥", "Demographics", "Demographics")
+    nav_btn("📈", "Engagement",   "Engagement")
+    nav_btn("📝", "Assessments",  "Assessments")
+
+    st.markdown("""<p style="padding:14px 16px 4px;color:#2d3d58;font-size:9px;
+    font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:0">PREDICT</p>""",
+    unsafe_allow_html=True)
+    nav_btn("🤖", "Predict Student", "Predict")
+    nav_btn("⚖️", "Compare Models",  "Compare")
+
+    st.markdown("""<p style="padding:14px 16px 4px;color:#2d3d58;font-size:9px;
+    font-weight:700;letter-spacing:3px;text-transform:uppercase;margin:0">DATA</p>""",
+    unsafe_allow_html=True)
+    nav_btn("🔍", "Explore Data", "Explore Data")
+
+    st.markdown("<hr style='border-color:#16213a;margin:14px 0'>",
+                unsafe_allow_html=True)
+
+    with st.expander("🎛️  Filters"):
         genders = st.multiselect("Gender",
                       sorted(master["gender"].dropna().unique()),
                       default=list(master["gender"].dropna().unique()),
                       label_visibility="collapsed")
-        ages = st.multiselect("Age",
+        ages = st.multiselect("Age Band",
                       sorted(master["age_band"].dropna().unique()),
                       default=list(master["age_band"].dropna().unique()),
                       label_visibility="collapsed")
@@ -240,7 +282,7 @@ with st.sidebar:
                       master["final_result"].dropna().unique(),
                       default=list(master["final_result"].dropna().unique()),
                       label_visibility="collapsed")
-    st.download_button("⬇️ Export CSV",
+    st.download_button("⬇️  Export CSV",
                         master.to_csv(index=False),
                         "oulad.csv","text/csv",use_container_width=True)
 
@@ -666,39 +708,17 @@ elif cur == "Predict":
         bar_html += "</div>"
         st.markdown(bar_html, unsafe_allow_html=True)
 
-        # ── Bar chart + table side by side ────────────────────
+        # ── Summary table only (no chart - avoids plotly version issues) ──
         st.markdown("<br>", unsafe_allow_html=True)
-        ca,cb = st.columns(2)
-        with ca:
-            st.markdown("#### 📈 Bar Chart")
-            bd = pd.DataFrame([{"Model":n.split(" ",1)[-1],
-                                  "Pass %":r["pass_pct"]}
-                                for n,r in results.items()])
-            fb = go.Figure(go.Bar(
-                x=bd["Model"],y=bd["Pass %"],width=0.5,
-                marker_color=["#2ecc71" if v>=50 else "#e74c3c"
-                               for v in bd["Pass %"]],
-                text=[f"{v}%" for v in bd["Pass %"]],
-                textposition="outside",
-                textfont=dict(size=14,color="white")))
-            fb.add_hline(y=50,line_dash="dash",line_color="white",
-                         opacity=0.25,annotation_text="50%",
-                         annotation_font_color="white")
-            fb.update_layout(template=TPL,
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                yaxis=dict(range=[0,118],gridcolor="#0f1a28"),
-                showlegend=False,height=280,
-                margin=dict(t=30,b=10,l=10,r=10))
-            st.plotly_chart(fb,use_container_width=True)
-        with cb:
-            st.markdown("#### 📋 Summary")
-            tbl = pd.DataFrame([{
-                "Model":mn,"Verdict":"✅ Pass" if r["pred"]==1 else "⚠️ At Risk",
-                "Pass %":f"{r['pass_pct']}%","Risk %":f"{r['risk_pct']}%",
-                "⭐":"Yes" if mn==sel else ""}
-                for mn,r in results.items()]).set_index("Model")
-            st.dataframe(tbl,use_container_width=True,height=220)
+        st.markdown("### 📋 Results Summary")
+        tbl = pd.DataFrame([{
+            "Model":   mn,
+            "Verdict": "✅ Pass" if r["pred"]==1 else "⚠️ At Risk",
+            "Pass %":  f"{r['pass_pct']}%",
+            "Risk %":  f"{r['risk_pct']}%",
+            "⭐":      "Yes" if mn==sel else "",
+        } for mn,r in results.items()]).set_index("Model")
+        st.dataframe(tbl, use_container_width=True)
 
 # ═════════════════════════════════════════════════════════════
 #  COMPARE
