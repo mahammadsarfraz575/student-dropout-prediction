@@ -406,7 +406,7 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE) fo
 
 ```
 MIT License © 2024 Your Name
-Built by [Your Name](https://linkedin.com/in/yourprofile)
+Built by [Mahammad Sarfraz](https://www.linkedin.com/in/mahammad-sarfraz)
 If you use this project, please star the repo ⭐ and give credit.
 ```
 
